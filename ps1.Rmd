@@ -1,0 +1,131 @@
+---
+title: "Problem Set 1"
+author: "Nate GOnzales-Hess"
+date: "2025-04-07"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.align = "center")
+library(tidyverse)  # Load any packages you need here
+```
+
+## Problem 1: Globe Tossing Posterior Distribution
+
+*Suppose the globe tossing experiment turned out to be 3 water and 11 land. Construct the posterior distribution.*
+
+```{r problem1}
+# Function to compute posterior for a given sample and range of possible proportions.
+compute_posterior = function(sample, possible){
+  
+  W = sum(sample == "W")
+  L = sum(sample == "L")
+  
+  prior = rep(1, length(possible)) # 2. Calculate likelihood and prior
+  likelihood = sapply(possible, function(x) dbinom(x = W, size = W+L, prob = x))
+  post = (prior * likelihood) / sum(prior * likelihood)  # 3. Calculate posterior probability
+  
+  return(post)
+}
+
+# Sample with 3 water and 13 land:
+sample = c("W","W","W","L","L","L","L","L","L","L","L","L","L","L","L","L")
+# 1. Create a grid of possible proportion values
+possible = seq(0,1,length.out=50)
+# Compute posteriors
+posterior = compute_posterior(sample, possible)
+
+# 4. Create a plot of the posterior distribution
+barplot(posterior, names.arg = round(possible,2),
+        main = "Posterior probabilities for possible proportions of water to land",
+        xlab = "Proportion Water",
+        ylab = "Density")
+```
+Your interpretation here:
+
+
+
+## Problem 2: Posterior Predictive Distribution
+
+*Using the posterior distribution from Problem 1, compute the posterior predictive distribution for the next 5 tosses of the globe.*
+
+```{r problem2}
+# Number of steps in our simulation
+n_tosses = 5
+sim_iters = 1000
+# Empty vector to store predicted "W" counts
+predicted_counts = rep(0, n_tosses)
+
+# 1. Sample from your posterior distribution
+post_samples <- sample(posterior, size=sim_iters, prob=posterior, replace=TRUE )
+
+# 2. Use these samples to simulate new tosses
+sim_globe = function( p=0.7 , N=5 ){
+  sample(
+    x = c("W", "L"),  # possible values
+    size = N,         # how many draws
+    prob = c(p, 1-p), # probability of each possibility
+    replace = TRUE    # the same value can be drawn multiple times
+  )
+}
+
+
+# Run simulation
+for (i in 1:sim_iters){
+  p = post_samples[i]
+  tosses = sim_globe(p, n_tosses)
+  water_count = sum(tosses == "W")
+  predicted_counts[water_count+1] = predicted_counts[water_count+1] + 1
+}
+
+# 3. Create a visualization of the predictions
+barplot(predicted_counts, names.arg = seq(1,5,1),
+        main = "Posterior Predictive Distribution",
+        xlab = "Water Count",
+        ylab = "Density")
+
+```
+
+Your interpretation here:
+
+
+## Session Information
+
+```{r session-info}
+# This will help with debugging and reproducibility
+sessionInfo()
+```
+
+```{r}
+n_tosses <- 5
+# Assuming 'posterior' is a vector of probabilities that sums to 1
+# And that you want to sample from the values 0:1 with these probabilities
+
+# 1. Set up the simulation
+sim_iters <- 10000
+possible_counts <- 0:n_tosses
+predicted_counts <- numeric(length(possible_counts))
+
+# 2. Run the simulation
+for (i in 1:sim_iters) {
+  # Sample one value from the posterior
+  p_water <- sample(seq(0, 1, length.out=length(posterior)), 
+                   size=1, prob=posterior, replace=TRUE)
+  
+  # Simulate new tosses with this probability
+  new_tosses <- rbinom(1, size=n_tosses, prob=p_water)
+  
+  # Update the count for this number of successes
+  predicted_counts[new_tosses + 1] <- predicted_counts[new_tosses + 1] + 1
+}
+
+# 3. Convert to probabilities
+predicted_probs <- predicted_counts / sum(predicted_counts)
+
+# 4. Create a visualization of the predictions
+barplot(predicted_probs, names.arg=possible_counts,
+        main="Posterior Predictive Distribution",
+        xlab="Water Count",
+        ylab="Probability")
+
+```
