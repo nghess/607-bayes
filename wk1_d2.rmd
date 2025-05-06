@@ -1,0 +1,55 @@
+---
+title: "wk1_d2"
+output: html_document
+date: "2025-04-03"
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(cowplot)
+```
+
+```{r}
+# function to toss a globe covered p by water N times
+sim_globe = function( p=0.7 , N=9 ){
+  sample(
+    x = c("W", "L"),  # possible values
+    size = N,         # how many draws
+    prob = c(p, 1-p), # probability of each possibility
+    replace = TRUE    # the same value can be drawn multiple times
+  )
+}
+
+sim_globe()
+```
+
+```{r}
+compute_posterior = function(sample, poss = seq(0,1,length.out=100)){
+  
+  W = sum(sample == "W")
+  L = sum(sample == "L")
+  
+  likelihood = sapply( poss, function(x) dbinom(x = W, size = W+L, prob = x))
+  
+  post = ( likelihood ) / sum( likelihood)
+  
+  return(post)
+}
+```
+
+```{r}
+sample = c("W", "W", "W")
+plot(seq(0,1,length.out=100), compute_posterior(sample), type = "l")
+
+```
+
+```{r}
+sample = c("W", "W", "W", "L")
+plot(seq(0,1,length.out=100), compute_posterior(sample), type = "l")
+```
+
+```{r}
+sample = c("L", "W", "W", "L", "W", "W", "W")
+plot(seq(0,1,length.out=100), compute_posterior(sample), type = "l")
+
+```

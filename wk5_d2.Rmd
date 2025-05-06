@@ -1,0 +1,86 @@
+---
+title: "Week 5 Day 2"
+author: "Nate Gonzales-Hess"
+date: "2025-05-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(here)
+library(tidyverse)
+library(brms)
+library(tidybayes)
+library(patchwork)
+library(rethinking)
+```
+
+```{r}
+data(UCBadmit)
+```
+
+```{r}
+data(UCBadmit, package = "rethinking")
+
+UCBadmit$gender = UCBadmit$applicant.gender
+
+m3 <- brm(
+  data = UCBadmit,
+  family = binomial,
+  admit | trials(applications) ~ 0 + gender, 
+  prior = c( prior( normal(0, 2), class = b) ),
+  iter = 5000, warmup = 1000, chains = 4, 
+  seed = 3,
+  file = here("files/models/51.3")
+)
+
+```
+
+
+```{r}
+m4 <- brm(
+  data = UCBadmit,
+  family = binomial,
+  admit | trials(applications) ~ gender*dept, 
+  prior = c( prior( normal(0, 2), class = Intercept),
+             prior( normal(0, 2), class = b) ),
+  iter = 5000, warmup = 1000, chains = 4, 
+  seed = 3,
+  file = here("files/models/51.4")
+)
+
+```
+
+```{r}
+get_variables((m3))
+```
+
+```{r}
+m3 %>%
+  spread_draws(b_genderfemale, b_gendermale)
+
+
+```
+
+
+```{r}
+UCBadmit %>% add_epred_draws(m3) %>%
+  ungroup() %>%
+  select(dept, gender, applications, admit, reject, .draw, .epred)
+
+```
+
+
+```{r}
+new_dat = distinct(UCBadmit, gender, dept) %>% 
+  mutate(applications = 1e5) 
+add_epred_draws(new_dat, m4) %>% 
+  ungroup() %>% 
+  select(dept, gender, .draw, .epred) %>% 
+  pivot_wider(names_from = gender, values_from = .epred) %>% 
+  mutate(diff = (female-male)/1e5) %>% 
+  ggplot(aes(x = diff, color = dept)) +
+  geom_density(linewidth = 2) +
+  labs(x = "P_female - P_male") +
+  guides(color = "none")
+```

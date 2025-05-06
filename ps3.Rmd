@@ -1,0 +1,156 @@
+---
+title: "Problem Set 3"
+author: "Nate Gonzales-Hess"
+date: "2025-04-21"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(here)
+library(tidyverse)
+library(brms)
+library(tidybayes)
+library(patchwork)
+library(rethinking)
+```
+## Make a model of avgfood ~ area
+
+```{r}
+# Load Data
+data("foxes")
+
+# Set priors for model
+priors <- c(
+  prior(normal(1, 2), class = "Intercept"),
+  prior(normal(0, 4), class = "b"),
+  prior(exponential(1), class = "sigma")
+)
+```
+
+```{r}
+# Fit the model
+food_by_area <- brm(
+  formula = avgfood ~ 1 + area,
+  data = foxes,
+  family = gaussian(),
+  prior = priors,
+  iter = 2000,
+  warmup = 500,
+  seed = 213,
+  file = here("files/models/foxes_food_by_area")
+)
+
+# Print the summarized results of the model
+posterior_summary(food_by_area) %>% round(2)
+```
+It appears that The more area the foxes have, the more food they have (.19 beta).
+
+
+## Total impact of food on weight + simulated intervention
+
+```{r}
+# Make centered versions of our variables
+foxes$avgfoodc = (foxes$avgfood - mean(foxes$avgfood))
+foxes$groupsizec = (foxes$groupsize - mean(foxes$groupsize))
+foxes$areac = (foxes$area - mean(foxes$area))
+
+# Define the linear formula for weight
+w_model_total <- bf(weight ~ 1 + avgfoodc)
+
+# Fit the model with appropriate priors
+foxes_w_total <- brm(
+  data = foxes, 
+  family = gaussian,
+  w_model_total,
+  prior = c(
+    # Priors for weight model
+    prior(normal(5, 2), class = "Intercept"),
+    prior(normal(0, 2), class = "b"),
+    prior(exponential(1), class = "sigma")),
+    iter = 2000, warmup = 1000, chains = 4, seed = 213,
+    file = here("files/models/foxes_weight_by_food")
+)
+
+posterior_summary(foxes_w_total) %>% round(2)
+```
+### Simulated intervention
+```{r}
+new_food_levels <- data.frame(
+  avgfoodc = seq(min(foxes$avgfood), max(foxes$avgfood), length.out = 100)
+)
+
+# Predict weights under the do(avgfood) operation
+intervention_results <- posterior_epred(foxes_w_total, newdata = new_food_levels)
+
+# Create result dataset
+causal_effect <- data.frame(
+  avgfood = new_food_levels$avgfood,
+  predicted_weight = colMeans(intervention_results),
+  lower = apply(intervention_results, 2, quantile, 0.025),
+  upper = apply(intervention_results, 2, quantile, 0.975)
+)
+
+# Visualize the causal effect
+ggplot(causal_effect, aes(x = avgfood, y = predicted_weight)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  labs(
+    title = "Causal Effect of do(avgfood) on Fox Weight",
+    x = "Average Food (Intervention)",
+    y = "Predicted Weight"
+  ) +
+  theme_minimal()
+
+# Calculate the change in weight for a unit change in food
+# at the median food level
+median_food <- median(foxes$avgfood)
+food_increase <- median_food + 1
+food_points <- data.frame(avgfoodc = c(median_food, food_increase))
+weight_change <- posterior_epred(foxes_w_total, newdata = food_points)
+average_effect <- mean(weight_change[,2] - weight_change[,1])
+```
+Adding one unit of food to a territory causes, on average, a -0.15kg change in weight. Weird...maybe we need to consider other causal variables?
+
+## Incorporating group size into the model:
+```{r}
+# Define the new nonlinear formula for weight
+w_model <- bf(
+  weight ~ a + bfood * avgfoodc + bgroup * groupsizec,
+  a ~ 1,
+  bfood ~ 1,
+  bgroup ~ 1,
+  nl = TRUE
+)
+
+# Define the formula for avgfood_c
+f_model <- bf(avgfoodc ~ 1 + areac)
+
+# Fit the model with appropriate priors
+foxes_m1 <- brm(
+  data = foxes, 
+  family = gaussian,
+  w_model + f_model + set_rescor(FALSE),
+  prior = c(
+    # Priors for weight model nonlinear parameters
+    prior(normal(5, 2), nlpar = "a",  resp = "weight"),
+    prior(normal(0, 2), nlpar = "bfood",  resp = "weight"),
+    prior(normal(0, 2), nlpar = "bgroup",  resp = "weight"),
+    prior(exponential(1), class = "sigma", resp = "weight"),
+    # Priors for avgfoodc model
+    prior(normal(0, 2), class = "Intercept", resp = "avgfoodc"),
+    prior(normal(0, 2), class = "b", resp = "avgfoodc"),
+    prior(exponential(1), class = "sigma", resp = "avgfoodc")
+  ),
+  iter = 2000, warmup = 1000, chains = 4, seed = 213,
+  file = here("files/models/foxes_groupsize")
+)
+```
+
+```{r}
+posterior_summary(foxes_m1) %>% round(2)
+```
+### What's up with the foxes?
+Group size decreases the the weight of foxes! It seems that as the foxes grow in numbers, they have to stretch their food resources more. This explains the ambiguous results above in the earlier model, which made it seem that more food caused lower weights.

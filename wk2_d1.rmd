@@ -1,0 +1,123 @@
+---
+title: "Week 2 Day 2"
+author: "Nate Gonzales-Hess"
+date: "2025-04-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(here)
+library(tidyverse)
+library(cowplot)
+library(brms)
+library(tidybayes)
+library(patchwork)
+```
+
+```{r cars}
+m1 <- brm(data=list(w=6),
+        family = binomial(link = "identity"),
+        w | trials(9) ~ 0 + Intercept,
+        prior(uniform(0,1), class = b),
+        iter = 5000, warmup = 1000, seed =3, chains=1,
+        sample_prior = "only",
+        file = here("files/models/m21.1"))
+```
+
+```{r}
+samples_from_post = as_draws_df(m1)
+samples_from_post
+```
+
+```{r}
+samples_from_post %>%  
+  ggplot(aes(x=b_Intercept)) +
+  geom_density(fill = "grey", color = "white") +
+  labs(x="Proportion water")
+```
+
+```{r}
+ppd = posterior_predict(m1)
+dim(ppd)
+```
+
+```{r}
+data.frame(obs = ppd) %>% 
+  ggplot(aes(x=obs)) +
+  geom_histogram() +
+  labs(x="Observed water (out of 9)")
+```
+
+
+```{r}
+set.seed(9)
+y = rnorm(n = 31, mean = 4, sd = .5)
+m2 = brm(
+  data = list(y=y),
+  family = gaussian,
+  y ~ 1,
+  prior = c(prior( normal(0,10), class=Intercept),
+            prior( uniform(0,5), class=sigma)),  
+      iter = 5000, warmup = 1000, seed = 3, chains=1,
+  file = here("files/models/m21.2")
+)
+
+```
+
+```{r}
+data("Howell1", package = "rethinking")
+d <- Howell1
+str(d)
+
+library(measurements)
+d$height <- conv_unit(d$height, from = "cm", to = "feet")
+d$weight <- conv_unit(d$weight, from = "kg", to = "lbs")
+rethinking::precis(d)
+```
+
+
+
+```{r}
+m3p = brm(
+  data = d,
+  family = gaussian,
+  weight ~ 1,
+  prior = c(prior( normal(130,20), class=Intercept),
+            prior( uniform(0,25), class=sigma, lb=0, ub=25)),  
+      iter = 5000, warmup = 1000, seed = 3, chains=1,
+  sample_prior = "only",
+  file = "files/models/m21.3.rds")
+
+```
+
+```{r}
+pairs(m3p)
+```
+
+
+```{r}
+prior_pd = posterior_predict(m3p)
+dim(prior_pd)
+
+as.data.frame(prior_pd) %>% 
+  pivot_longer(everything()) %>% 
+  ggplot(aes(x=value)) +
+  geom_histogram() +
+  labs(x="Expected observed weights (based on prior)")
+```
+
+
+```{r}
+m3p = brm(
+  data = d,
+  family = gaussian,
+  weight ~ 1 + b*3,
+  prior = c(prior( normal(130,20), class=Intercept),
+            prior( uniform(0,25), class=sigma, lb=0, ub=25),
+            prior( normal(0,10), class="b")),  
+            iter = 5000, warmup = 1000, seed = 3, chains=1,
+  #sample_prior = "only",
+  file = "files/models/m21.5.rds")
+
+```

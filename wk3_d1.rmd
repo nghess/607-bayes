@@ -1,0 +1,56 @@
+---
+title: "Week 3 Day 2"
+author: "Nate Gonzales-Hess"
+date: "2025-04-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(here)
+library(tidyverse)
+library(brms)
+library(tidybayes)
+library(patchwork)
+library(rethinking)
+```
+
+```{r}
+data(WaffleDivorce, package = "rethinking")
+d <- WaffleDivorce
+
+d$D <- rethinking::standardize(d$Divorce)
+d$M <- rethinking::standardize(d$Marriage)
+
+m1 <- brm(
+  data = d,
+  family = gaussian,
+  D ~ 1 + M,
+  prior = c( prior(normal(0, .2),  class=Intercept),
+             prior(normal(0, .5),  class=b),
+             prior(exponential(1), class=sigma)),
+  iter=2000, warmup=1000, seed=2, chains=1,
+  file=here("files/models/31.1")
+)
+```
+
+```{r}
+posterior_summary(m1)
+```
+
+```{r}
+post = as_draws_df(m1)
+
+
+# plot it all
+ggplot(d, aes(x = M, y = D)) +
+  geom_point() +
+  geom_abline( aes(intercept = b_Intercept, slope = b_M), 
+               data = post[1:20, ],
+               col= "#1c5253", 
+               alpha = .3) +
+  labs( x="marriage rate",
+        y="divorce rate")
+
+
+```

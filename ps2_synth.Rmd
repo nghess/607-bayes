@@ -1,0 +1,94 @@
+---
+title: "Problem Set 2"
+author: "Nate Gonzales-Hess"
+date: "2025-04-14"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(here)
+library(tidyverse)
+library(brms)
+library(tidybayes)
+library(patchwork)
+```
+
+```{r}
+# Function to generate synthetic height and weight data based on age
+generate_height_weight <- function(age, n_samples = 1) {
+  # Parameters for height model (in cm)
+  # Basic model: height ~ base_height + growth_until_20 - decline_after_40
+  base_height <- 150
+  max_growth <- 30
+  height_decline_rate <- 0.1
+  height_sd <- 5
+  
+  # Parameters for weight model (in kg)
+  # Basic model: weight ~ base_weight + weight_gain_with_age
+  base_weight <- 50
+  weight_gain_rate <- 0.5
+  weight_sd <- 8
+  
+  # Calculate expected height
+  expected_height <- base_height
+  
+  # Add growth component (up to age 20)
+  if (age < 20) {
+    expected_height <- expected_height + (age/20) * max_growth
+  } else {
+    expected_height <- expected_height + max_growth
+  }
+  
+  # Subtract decline component (after age 40)
+  if (age > 40) {
+    expected_height <- expected_height - height_decline_rate * (age - 40)
+  }
+  
+  # Calculate expected weight
+  expected_weight <- base_weight + weight_gain_rate * age
+  
+  # Generate samples with random variation
+  height_samples <- rnorm(n_samples, mean = expected_height, sd = height_sd)
+  weight_samples <- rnorm(n_samples, mean = expected_weight, sd = weight_sd)
+  
+  # Create a data frame if multiple samples
+  if (n_samples > 1) {
+    return(data.frame(
+      age = rep(age, n_samples),
+      height = height_samples,
+      weight = weight_samples))
+  }
+}
+
+```
+
+```{r}
+# Generate synthetic dataset
+synthetic_data <- data.frame()
+for (age in 0:100) {
+  age_data <- generate_height_weight(age, n_samples = 10)  # 10 samples for each age
+  synthetic_data <- rbind(synthetic_data, age_data)
+}
+```
+
+```{r message=FALSE}
+# Plot synthetic data
+synth_height <- ggplot(synthetic_data, aes(x = age, y = height)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess") +
+  labs(title = "Height vs Age", x = "Age", y = "Height (cm)")
+
+synth_weight <- ggplot(synthetic_data, aes(x = age, y = weight)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess") +
+  labs(title = "Weight vs Age", x = "Age", y = "Weight (kg)")
+
+synth_height + synth_weight
+```
+```{r}
+
+
+```

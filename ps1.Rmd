@@ -1,6 +1,6 @@
 ---
 title: "Problem Set 1"
-author: "Nate GOnzales-Hess"
+author: "Nate Gonzales-Hess"
 date: "2025-04-07"
 output: pdf_document
 ---
@@ -41,20 +41,16 @@ barplot(posterior, names.arg = round(possible,2),
         xlab = "Proportion Water",
         ylab = "Density")
 ```
-Your interpretation here:
-
-
+Starting from a flat prior, the posterior probability peaks around .20 (proportion of "W" to total) which makes sense, given that we observed 3 "W"s in 16 tosses and 3/16 = .1875. *This being a distribution, we aren't concerned with a particular value along the x-axis, but with the entire distribution. Still the distribution reflects the values in the sample pretty closely.
 
 ## Problem 2: Posterior Predictive Distribution
 
 *Using the posterior distribution from Problem 1, compute the posterior predictive distribution for the next 5 tosses of the globe.*
 
 ```{r problem2}
-# Number of steps in our simulation
-n_tosses = 5
-sim_iters = 1000
-# Empty vector to store predicted "W" counts (0-5 possible "W" observations)
-predicted_counts = rep(0, n_tosses+1)
+n_tosses = 5  # Number of steps in our simulation
+sim_iters = 1000  # Number of times to run the simulated globe toss
+predicted_counts = rep(0, n_tosses+1)  # Empty vector to store predicted "W" counts (0-5 possible "W" observations)
 
 # 1. Sample from your posterior distribution
 post_samples <- sample(possible, size=sim_iters, prob=posterior, replace=TRUE )
@@ -82,15 +78,31 @@ barplot(predicted_counts, names.arg = seq(0,5),
         main = "Posterior Predictive Distribution (5 new tosses)",
         xlab = "Number of \"W\"",
         ylab = "Count")
-
 ```
 
-Your interpretation here:
-
+Using the posterior distribution to fuel 5 simulated tosses yielded a posterior predictive distribution that agreed well with the posterior probabilities. In 1000 simulated 5-toss runs, we saw 347 runs that yielded zero "W"s, 362 runs that yielded one "W", 198 runs that yielded two "W"s, 69 runs that yielded three "W"s, 22 runs that yielded four "W"s and 2 runs that gave five "W"s. --These counts aren't important on their own, but they give an approximate probability for each of the outcomes, and these probabilities fit well with the posterior probability, generated from a sample containing 3 "W"s and 13 "L"s. --In terms of generating data, this approach would yield samples pretty similar to the 3 "W" 13 "L" sample we started from.
 
 ## Session Information
 
 ```{r session-info}
 # This will help with debugging and reproducibility
 sessionInfo()
+```
+
+
+
+```{r}
+library(rethinking)
+
+f <- alist(
+    y ~ dnorm( mu , sigma ),
+    mu ~ dnorm( 0 , 10 ),
+    sigma ~ dexp( 1 )
+)
+
+fit <- quap( 
+    f , 
+    data=list(y=c(-1,1)) , 
+    start=list(mu=0,sigma=1)
+)
 ```

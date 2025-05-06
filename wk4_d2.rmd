@@ -1,0 +1,63 @@
+---
+title: "Week 4 Day 2"
+author: "Nate Gonzales-Hess"
+date: "2025-04-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(here)
+library(tidyverse)
+library(brms)
+library(tidybayes)
+library(patchwork)
+library(rethinking)
+```
+
+```{r}
+data(Howell1, package = "rethinking")
+d <- Howell1
+library(measurements)
+d$height <- conv_unit(d$height, from = "cm", to = "feet")
+d$weight <- conv_unit(d$weight, from = "kg", to = "lbs")
+#describe(d, fast = T)
+
+d <- d[d$age >= 18, ]
+d$height_c <- d$height - mean(d$height)
+
+```
+
+```{r}
+m1 <-brm(
+  data = d, 
+  family = gaussian,
+  weight ~ 1 + height_c,
+  prior = c( prior( normal(130,20), class = Intercept),
+             prior( normal(0,25), class = b),
+             prior( uniform(0,50), class = sigma, ub = 50)
+    ), 
+  iter = 5000, warmup = 1000, chains = 4, 
+  seed = 3, 
+      file = here("files/data/generated_data/m1"))
+
+```
+
+```{r}
+# View model as stan code
+brms::stancode(m1)
+```
+
+```{r}
+library(bayesplot)
+mcmc_trace(m1)
+```
+
+```{r}
+mcmc_rank_overlay(m1, pars=vars(b_Intercept:sigma)) +ylim(150, NA)
+```
+
+R hat is like F statistic in ANOVA - you want it to be one - you don't want your MCMC posterior distributions to be different.
+```{r}
+summary(m1)
+```
