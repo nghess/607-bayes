@@ -1,0 +1,228 @@
+---
+title: "Problem Set 4"
+author: "Nate Gonzales-Hess"
+date: "2025-04-28"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rethinking)
+library(brms)
+library(here)
+library(tinytex)
+library(ggdist)
+```
+
+## Run Models from lecture 3-1:
+```{r}
+# Load data and filter
+d <- rethinking::sim_happiness(seed = 1990, N_years = 1000)
+rethinking::precis(d)
+
+d2 <- d[d$age >= 18, ]
+d2$A <- rethinking::standardize(d2$age)
+d2$mid <- as.factor(d2$married + 1)
+
+# Model in which happiness is influenced by both marriage and age
+m6a <- brm(
+  data=d2, 
+  family=gaussian,
+  bf( happiness ~ 0 + a + b*A, 
+      a ~ 0 + mid,
+      b ~ 0 + mid,
+      nl = TRUE),
+  prior = c( prior(normal(0, .50), nlpar=a),
+             prior(normal(0, .25), nlpar=b),
+             prior(exponential(1), class=sigma)),
+  iter=2000, warmup=1000, seed=9, chains=1,
+  file = here("files/models/31.6a")
+)
+
+# Model in which happiness is only influenced by age
+m7 <- brm(
+  data=d2, 
+  family=gaussian,
+  happiness ~ A,
+  prior = c( prior(normal(0, .50), class=Intercept),
+             prior(normal(0, .25), class=b),
+             prior(exponential(1), class=sigma)),
+  iter=2000, warmup=1000, seed=9, chains=1,
+  file = here("files/models/31.7")
+)
+```
+
+## Apply PSIS and WAIC to models:
+
+```{r}
+# WAIC
+waic(m6a)
+waic(m7)
+```
+```{r}
+waic_comparison <- loo_compare(waic(m6a), waic(m7))
+print(waic_comparison)
+```
+```{r}
+# PSIS
+loo(m6a)
+loo(m7)
+```
+```{r}
+# Compare models
+psis_comparison <- loo_compare(loo(m6a), loo(m7))
+print(psis_comparison)
+```
+### Interpretation:
+WAIC and Loo give nearly identical results, and both indicate that model 6a (the more complex model) performs better in terms of predictive accuracy than model 7. Despite superior predictive performance, model 6a actually gets the causal relationship wrong, as when we stratify by marriage (Lecture 3-1, slide 39), we see that age is the more causal variable.
+
+## We’re Number One, Alas:
+```{r}
+data("Laffer")
+
+# Simple linear model (straight line)
+model_linear <- brm(
+  formula = tax_revenue ~ tax_rate,
+  data = Laffer,
+  family = gaussian(),
+  prior = c(
+    prior(normal(0, 10), class = "Intercept"),
+    prior(normal(0, 10), class = "b"),
+    prior(exponential(1), class = "sigma")
+  ),
+  chains = 4,
+  cores = 4,
+  file = here("files/models/ps4_linear")
+)
+
+# Quadratic model (curve)
+model_quadratic <- brm(
+  formula = tax_revenue ~ tax_rate + I(tax_rate^2),
+  data = Laffer,
+  family = gaussian(),
+  prior = c(
+    prior(normal(0, 10), class = "Intercept"),
+    prior(normal(0, 10), class = "b"),
+    prior(exponential(1), class = "sigma")
+  ),
+  chains = 4,
+  cores = 4,
+  file = here("files/models/ps4_quadratic")
+)
+```
+
+```{r}
+# Create smooth prediction data
+pred_data <- data.frame(tax_rate = seq(min(Laffer$tax_rate), max(Laffer$tax_rate), length.out = 100))
+
+# Get the FITTED values directly (rather than draws from the posterior)
+# This will give us smooth lines
+fitted_linear <- fitted(model_linear, newdata = pred_data)
+fitted_quadratic <- fitted(model_quadratic, newdata = pred_data)
+
+# Add fitted values to new_data
+pred_data$linear_fit <- fitted_linear[,"Estimate"]
+pred_data$quadratic_fit <- fitted_quadratic[,"Estimate"]
+
+# Create plot with smooth lines
+ggplot(Laffer, aes(x = tax_rate, y = tax_revenue)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_line(data = pred_data, aes(y = linear_fit, color = "Linear"), size = 1) +
+  geom_line(data = pred_data, aes(y = quadratic_fit, color = "Quadratic"), size = 1) +
+  scale_color_manual(values = c("Linear" = "blue", "Quadratic" = "red")) +
+  labs(title = "Linear vs Quadratic Model for Laffer Data",
+       x = "Tax Rate",
+       y = "Tax Revenue",
+       color = "Model") +
+  theme_minimal()
+```
+```{r warning=FALSE, message=FALSE}
+loo_linear = loo(model_linear)
+loo_quad = loo(model_quadratic)
+```
+
+```{r warning=FALSE, message=FALSE}
+curve_comparison <- loo_compare(loo(model_linear), loo(model_quadratic))
+print(curve_comparison)
+```
+### Interpretation:
+The quadratic model seems to have slightly better prediction accuracy than the linear model, however because the se_diff is so close to the elpd_diff, I don't think there is any practical difference in prediction quality between the two models.
+
+## Outlier identification using Pareto k (We already know it's Norway, but.):
+```{r}
+# Extract Pareto k values
+pareto_k_linear <- loo_linear$diagnostics$pareto_k
+pareto_k_quad <- loo_quad$diagnostics$pareto_k
+
+# Identify observations with high k values
+high_k_linear <- which(pareto_k_linear > 0.7)
+high_k_quad <- which(pareto_k_linear > 0.7)
+```
+
+```{r message=FALSE, warning=FALSE}
+# Make models without Norway datapoint
+no_norway <- Laffer[-high_k_linear,]
+
+# Simple linear model (straight line)
+model_linear_no_norway <- brm(
+  formula = tax_revenue ~ tax_rate,
+  data = no_norway,
+  family = gaussian(),
+  prior = c(
+    prior(normal(0, 10), class = "Intercept"),
+    prior(normal(0, 10), class = "b"),
+    prior(exponential(1), class = "sigma")
+  ),
+  chains = 4,
+  cores = 4,
+  file = here("files/models/ps4_linear_no_norway")
+)
+
+# Quadratic model (curve)
+model_quadratic_no_norway <- brm(
+  formula = tax_revenue ~ tax_rate + I(tax_rate^2),
+  data = no_norway,
+  family = gaussian(),
+  prior = c(
+    prior(normal(0, 10), class = "Intercept"),
+    prior(normal(0, 10), class = "b"),
+    prior(exponential(1), class = "sigma")
+  ),
+  chains = 4,
+  cores = 4,
+  file = here("files/models/ps4_quadratic_no_norway")
+)
+```
+
+```{r}
+# Compare Linear
+loo(model_linear)
+loo(model_linear_no_norway)
+```
+
+```{r}
+# Compare Quadratic
+loo(model_quadratic)
+loo(model_quadratic_no_norway)
+```
+
+```{r}
+post4 = as_draws_df(model_quadratic) %>% mutate(model="With Norway")
+post5 = as_draws_df(model_quadratic_no_norway) %>% mutate(model="Without Norway")
+full_join(post4, post5) %>% 
+  ggplot(aes(x = b_tax_rate, fill = model)) +  # Specify x and fill aesthetics
+  stat_halfeye(alpha = 0.8) +
+  scale_fill_manual(values = c("grey", "#1c5253")) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(x = "Tax Rate Coefficient",
+       y = NULL,
+       title = "Posterior Distributions With and Without Norway") +
+  theme_minimal()
+```
+
+### Interpretation:
+Removing Norway improves model quality, in particular it reduces standard error. And removing Norway has a regularizing effect on the posterior distribution as a whole.
